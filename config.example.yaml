@@ -1,0 +1,4 @@
+mvt_rs:
+  base_url: "http://localhost:5887"
+  email: "admin@example.com"
+  password: "change-me"
