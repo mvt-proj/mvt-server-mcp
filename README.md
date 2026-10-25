@@ -73,13 +73,32 @@ Replace the path, URL, email, and password with your actual values. Restart Clau
 
 ## Register with Claude Code
 
-Register the server using the `claude mcp add` command:
+Register the server using the `claude mcp add` command. Either pass the three connection fields as separate env vars:
 
 ```bash
 claude mcp add mvt-server-mcp --env MVT_SERVER_MCP__MVT_RS__BASE_URL=http://localhost:5887 --env MVT_SERVER_MCP__MVT_RS__EMAIL=admin@example.com --env MVT_SERVER_MCP__MVT_RS__PASSWORD=change-me -- /absolute/path/to/mvt-server-mcp
 ```
 
-Adjust the environment variables and path as needed for your setup.
+or point at an existing `config.yaml` with the escape-hatch variable instead:
+
+```bash
+claude mcp add mvt-server-mcp --env MVT_SERVER_MCP_CONFIG_FILE=/absolute/path/to/config.yaml -- /absolute/path/to/mvt-server-mcp
+```
+
+Adjust the environment variables and path as needed for your setup. This writes to local scope (this project, this machine only) by default; add `--scope project` to share the entry via a checked-in `.mcp.json`, or `--scope user` to make it available in every project.
+
+## Register with Antigravity CLI
+
+Register the server using the `agy mcp add` command. Note the argument order differs from `claude mcp add`: name and binary path come after the flags, with no `--` separator.
+
+```bash
+agy mcp add \
+  --env MVT_SERVER_MCP_CONFIG_FILE=/absolute/path/to/config.yaml \
+  mvt-server-mcp \
+  /absolute/path/to/mvt-server-mcp
+```
+
+As with Claude Code, you can instead pass the three `MVT_SERVER_MCP__MVT_RS__*` env vars directly if you don't want a config file on disk.
 
 ## Tools
 
