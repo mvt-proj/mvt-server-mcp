@@ -1,6 +1,6 @@
 # mvt-server-mcp
 
-An MCP server that bridges Claude to [mvt-rs](https://github.com/mvt-proj/mvt-rs), a PostgreSQL-backed vector tile and style management system. This server discovers catalog layers and style categories, and allows Claude to create or update MapLibre styles on the connected mvt-rs instance. Non-goals: this server makes no AI calls itself, performs no semantic style validation, and communicates via stdio only.
+An MCP server that bridges AI assistants — Claude, Antigravity, or any other MCP-compatible client — to [MVT Server](https://github.com/mvt-proj/mvt-rs) (repo name `mvt-rs`), a PostgreSQL-backed vector tile and style management system. This server discovers catalog layers and style categories, and allows the connected AI assistant to create or update MapLibre styles on the connected MVT Server instance. Non-goals: this server makes no AI calls itself, performs no semantic style validation, and communicates via stdio only.
 
 ## Build
 
@@ -12,9 +12,9 @@ The compiled binary is at `target/release/mvt-server-mcp`.
 
 ## Configure
 
-The server loads configuration from a YAML file (default `config.yaml`), with environment variables overlaid on top. Configuration is required for three mvt-rs connection parameters:
+The server loads configuration from a YAML file (default `config.yaml`), with environment variables overlaid on top. Configuration is required for three MVT Server connection parameters:
 
-- `mvt_rs.base_url`: HTTP(S) URL of the mvt-rs server instance (e.g., `http://localhost:5887`).
+- `mvt_rs.base_url`: HTTP(S) URL of the MVT Server instance (e.g., `http://localhost:5887`).
 - `mvt_rs.email`: Admin email for authentication.
 - `mvt_rs.password`: Admin password for authentication.
 
@@ -49,6 +49,10 @@ If you need to store the configuration file at a non-default location (important
 export MVT_SERVER_MCP_CONFIG_FILE=/etc/mvt-server-mcp/config.yaml
 ./mvt-server-mcp
 ```
+
+## Register with an MCP Client
+
+This server speaks standard MCP over stdio, so it works with any MCP-compatible client — Claude Desktop, Claude Code, Antigravity CLI, and others. The sections below cover the clients with their own registration flow; for other MCP hosts, consult their docs for how to add a stdio server with a command/args/env configuration.
 
 ## Register with Claude Desktop
 
@@ -104,40 +108,40 @@ As with Claude Code, you can instead pass the three `MVT_SERVER_MCP__MVT_RS__*` 
 
 The server exposes eleven tools:
 
-- **`list_layers`**: List every layer in the mvt-rs catalog, with its id, name, category, geometry type, published state, and the name+type of every field it exposes.
+- **`list_layers`**: List every layer in the MVT Server catalog, with its id, name, category, geometry type, published state, and the name+type of every field it exposes.
 
-- **`get_layer`**: Get one catalog layer's complete raw configuration by id — every field mvt-rs stores (filter, srid, buffer, extent, zoom range, groups, etc.), not just the summary `list_layers` shows. Always call this before `update_layer`.
+- **`get_layer`**: Get one catalog layer's complete raw configuration by id — every field MVT Server stores (filter, srid, buffer, extent, zoom range, groups, etc.), not just the summary `list_layers` shows. Always call this before `update_layer`.
 
-- **`create_layer`**: Register a new layer in the mvt-rs catalog from an existing Postgres table. The database/schema/table must already exist and be reachable from mvt-rs; this only creates the catalog entry.
+- **`create_layer`**: Register a new layer in the MVT Server catalog from an existing Postgres table. The database/schema/table must already exist and be reachable from MVT Server; this only creates the catalog entry.
 
-- **`update_layer`**: Replace an existing layer's full catalog entry in mvt-rs by id — e.g. to move it to a different category, rename it, or change its published state. This replaces the whole entry, not a partial patch: call `get_layer` first and pass every field back with its current value except what you mean to change.
+- **`update_layer`**: Replace an existing layer's full catalog entry in MVT Server by id — e.g. to move it to a different category, rename it, or change its published state. This replaces the whole entry, not a partial patch: call `get_layer` first and pass every field back with its current value except what you mean to change.
 
-- **`list_categories`**: List every style category known to mvt-rs (id, name, description). The id is required by create_style/update_style's category_id parameter.
+- **`list_categories`**: List every style category known to MVT Server (id, name, description). The id is required by create_style/update_style's category_id parameter.
 
-- **`create_category`**: Create a new style category in mvt-rs. The returned id is required by create_style/update_style's category_id parameter.
+- **`create_category`**: Create a new style category in MVT Server. The returned id is required by create_style/update_style's category_id parameter.
 
-- **`update_category`**: Rename or redescribe an existing style category in mvt-rs by id. Use list_categories first to find the id.
+- **`update_category`**: Rename or redescribe an existing style category in MVT Server by id. Use list_categories first to find the id.
 
-- **`list_styles`**: List every existing MapLibre style in mvt-rs, with its id, name, category, and description (not the style body itself). Use this to find an existing style's id before calling update_style or get_style, or to see what already exists in a category before creating a new one.
+- **`list_styles`**: List every existing MapLibre style in MVT Server, with its id, name, category, and description (not the style body itself). Use this to find an existing style's id before calling update_style or get_style, or to see what already exists in a category before creating a new one.
 
-- **`get_style`**: Get the full detail of one existing MapLibre style in mvt-rs by id, including its complete style_json body (parsed, not escaped). Use list_styles first to find the id.
+- **`get_style`**: Get the full detail of one existing MapLibre style in MVT Server by id, including its complete style_json body (parsed, not escaped). Use list_styles first to find the id.
 
-- **`create_style`**: Create a new MapLibre style in mvt-rs. style_json must be a complete, valid MapLibre style JSON object; mvt-server-mcp does not validate it semantically — only mvt-rs's own JSON-parse check applies.
+- **`create_style`**: Create a new MapLibre style in MVT Server. style_json must be a complete, valid MapLibre style JSON object; mvt-server-mcp does not validate it semantically — only MVT Server's own JSON-parse check applies.
 
-- **`update_style`**: Replace an existing MapLibre style in mvt-rs by id. This replaces the whole style, not a partial patch.
+- **`update_style`**: Replace an existing MapLibre style in MVT Server by id. This replaces the whole style, not a partial patch.
 
 ## Manual Smoke-Test Checklist
 
-To verify the setup works end-to-end against a real mvt-rs instance:
+To verify the setup works end-to-end against a real MVT Server instance:
 
-1. **Start mvt-rs** at the configured URL (e.g., `http://localhost:5887`).
+1. **Start MVT Server** at the configured URL (e.g., `http://localhost:5887`).
 2. **Configure mvt-server-mcp** to point at that instance (via `config.yaml` or env vars).
-3. **Register mvt-server-mcp** with Claude Desktop or Claude Code using the steps above.
-4. **List layers**: Ask Claude to call `list_layers` and confirm that at least one layer is returned with id, name, category, fields, etc.
-5. **List categories**: Ask Claude to call `list_categories` and confirm categories are listed with id, name, description.
-6. **Create a style**: Ask Claude to create a trivial MapLibre style (e.g., a plain light background) and assign it to one of the returned categories; confirm it appears in mvt-rs's own admin UI.
-7. **Verify rejection handling**: Ask Claude to reference a bogus category id (e.g., `nonexistent-category`) and confirm that the rejection message from mvt-rs surfaces back through the MCP host to the conversation.
+3. **Register mvt-server-mcp** with your MCP client (Claude Desktop, Claude Code, Antigravity CLI, or another MCP host) using the steps above.
+4. **List layers**: Ask the AI assistant to call `list_layers` and confirm that at least one layer is returned with id, name, category, fields, etc.
+5. **List categories**: Ask the AI assistant to call `list_categories` and confirm categories are listed with id, name, description.
+6. **Create a style**: Ask the AI assistant to create a trivial MapLibre style (e.g., a plain light background) and assign it to one of the returned categories; confirm it appears in MVT Server's own admin UI.
+7. **Verify rejection handling**: Ask the AI assistant to reference a bogus category id (e.g., `nonexistent-category`) and confirm that the rejection message from MVT Server surfaces back through the MCP host to the conversation.
 
 ## Security Note
 
-The stored mvt-rs credential (email and password) grants full admin privilege; there is no scoped "styles only" role available today, so mvt-server-mcp must use a full admin account to do its job. This is a deliberate, accepted v1 trade-off, not an oversight. The password sits in plaintext in whatever configuration file or environment variable holds it — the same trust model as any local MCP server configuration. Ensure the configuration file and process environment are protected accordingly, and do not expose credentials in public repositories or logs.
+The stored MVT Server credential (email and password) grants full admin privilege; there is no scoped "styles only" role available today, so mvt-server-mcp must use a full admin account to do its job. This is a deliberate, accepted v1 trade-off, not an oversight. The password sits in plaintext in whatever configuration file or environment variable holds it — the same trust model as any local MCP server configuration. Ensure the configuration file and process environment are protected accordingly, and do not expose credentials in public repositories or logs.
