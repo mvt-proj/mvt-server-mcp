@@ -55,6 +55,11 @@ pub struct GetLayerRequest {
     pub id: String,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ClearLayerCacheRequest {
+    pub id: String,
+}
+
 /// Every field mvt-rs's own layer-create/update form accepts. `update_layer`
 /// replaces the whole catalog entry (no partial patch), so a model intending
 /// to change only one field (e.g. moving a layer to a different category)
@@ -282,6 +287,19 @@ impl MvtMcpServer {
         let input: LayerInput = req.into();
         match self.client.update_layer(&id, &input).await {
             Ok(layer) => Ok(success_json(&layer)),
+            Err(err) => Ok(client_error_to_tool_result(err)),
+        }
+    }
+
+    #[tool(
+        description = "Clear the cached tiles for one catalog layer in mvt-rs by id, so the next request for any of its tiles is rendered fresh from the database. Use list_layers first to find the id."
+    )]
+    async fn clear_layer_cache(
+        &self,
+        Parameters(req): Parameters<ClearLayerCacheRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        match self.client.delete_layer_cache(&req.id).await {
+            Ok(result) => Ok(success_json(&result)),
             Err(err) => Ok(client_error_to_tool_result(err)),
         }
     }

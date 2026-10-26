@@ -335,6 +335,18 @@ impl MvtRsClient {
         .await
     }
 
+    /// Drops every cached tile for this layer so the next request for any
+    /// of its tiles is rendered fresh from the database. mvt-rs takes no
+    /// body for this call.
+    pub async fn delete_layer_cache(&self, id: &str) -> Result<serde_json::Value, ClientError> {
+        self.send_authorized(
+            reqwest::Method::DELETE,
+            &format!("/api/admin/catalog/layer/{id}/cache"),
+            &(),
+        )
+        .await
+    }
+
     /// `schema`/`table` are URL path segments (mvt-rs mounts this route as
     /// `fields/{schema}/{table}`) — only `database_id` is a query param.
     pub async fn list_database_fields(
@@ -877,6 +889,25 @@ mod tests {
         assert!(result.is_ok(), "expected Ok, got {result:?}");
         let category = result.unwrap();
         assert_eq!(category.name, "parks-renamed");
+    }
+
+    #[tokio::test]
+    async fn delete_layer_cache_deletes_to_the_correct_id_path() {
+        let server = MockServer::start().await;
+        mount_login_success(&server, "tok-123").await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/admin/catalog/layer/layer-42/cache"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"deleted": true})),
+            )
+            .mount(&server)
+            .await;
+
+        let client = MvtRsClient::new(server.uri(), "user@example.com", "pw");
+        let result = client.delete_layer_cache("layer-42").await;
+
+        assert!(result.is_ok(), "expected Ok, got {result:?}");
+        assert_eq!(result.unwrap(), serde_json::json!({"deleted": true}));
     }
 
     #[tokio::test]

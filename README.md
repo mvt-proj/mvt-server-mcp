@@ -106,7 +106,7 @@ As with Claude Code, you can instead pass the three `MVT_SERVER_MCP__MVT_RS__*` 
 
 ## Tools
 
-The server exposes eleven tools:
+The server exposes twelve tools:
 
 - **`list_layers`**: List every layer in the MVT Server catalog, with its id, name, category, geometry type, published state, and the name+type of every field it exposes.
 
@@ -115,6 +115,8 @@ The server exposes eleven tools:
 - **`create_layer`**: Register a new layer in the MVT Server catalog from an existing Postgres table. The database/schema/table must already exist and be reachable from MVT Server; this only creates the catalog entry.
 
 - **`update_layer`**: Replace an existing layer's full catalog entry in MVT Server by id — e.g. to move it to a different category, rename it, or change its published state. This replaces the whole entry, not a partial patch: call `get_layer` first and pass every field back with its current value except what you mean to change.
+
+- **`clear_layer_cache`**: Clear the cached tiles for one catalog layer in MVT Server by id, so the next request for any of its tiles is rendered fresh from the database. Use `list_layers` first to find the id.
 
 - **`list_categories`**: List every style category known to MVT Server (id, name, description). The id is required by create_style/update_style's category_id parameter.
 
