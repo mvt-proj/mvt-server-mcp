@@ -106,7 +106,7 @@ As with Claude Code, you can instead pass the three `MVT_SERVER_MCP__MVT_RS__*` 
 
 ## Tools
 
-The server exposes thirteen tools:
+The server exposes sixteen tools:
 
 - **`list_layers`**: List every layer in the MVT Server catalog, with its id, name, category, geometry type, published state, and the name+type of every field it exposes.
 
@@ -119,6 +119,12 @@ The server exposes thirteen tools:
 - **`list_table_fields`**: List every column (name and Postgres type) of a database table reachable from MVT Server, whether or not it is already a catalog layer. Use it before `create_layer` to pick the table's real field names; leave the geometry column out of `create_layer`'s fields, since it goes in `geom`.
 
 - **`clear_layer_cache`**: Clear the cached tiles for one catalog layer in MVT Server by id, so the next request for any of its tiles is rendered fresh from the database. Use `list_layers` first to find the id.
+
+- **`list_groups`**: List every user group known to MVT Server (id, name, description). `create_layer`/`update_layer`'s `groups` parameter takes group names, matched exactly; MVT Server silently drops an unknown name, and a layer left with no groups is public. Check names here first, then confirm with `get_layer`.
+
+- **`create_group`**: Create a new user group in MVT Server. MVT Server normalizes the name (lowercased, accents stripped, spaces to underscores), so use the returned name when assigning the group to a layer.
+
+- **`update_group`**: Rename or redescribe an existing user group in MVT Server by id. Use `list_groups` first to find the id. Layers reference ordinary groups by id, so renaming keeps their access. `admin` and `admin_metadata` are roles MVT Server checks by exact name, so renaming them, or renaming another group to those names, is refused; their description can still change.
 
 - **`list_categories`**: List every style category known to MVT Server (id, name, description). The id is required by create_style/update_style's category_id parameter.
 

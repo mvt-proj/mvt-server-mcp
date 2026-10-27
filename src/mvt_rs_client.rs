@@ -37,6 +37,13 @@ pub struct RemoteField {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteGroup {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteStyle {
     pub id: String,
     pub name: String,
@@ -66,6 +73,12 @@ struct StyleWriteBody<'a> {
 
 #[derive(Serialize)]
 struct CategoryWriteBody<'a> {
+    name: &'a str,
+    description: &'a str,
+}
+
+#[derive(Serialize)]
+struct GroupWriteBody<'a> {
     name: &'a str,
     description: &'a str,
 }
@@ -285,6 +298,35 @@ impl MvtRsClient {
         .await
     }
 
+    pub async fn list_groups(&self) -> Result<Vec<RemoteGroup>, ClientError> {
+        self.get_authorized("/api/admin/groups", &[]).await
+    }
+
+    pub async fn create_group(
+        &self,
+        name: &str,
+        description: &str,
+    ) -> Result<RemoteGroup, ClientError> {
+        let body = GroupWriteBody { name, description };
+        self.send_authorized(reqwest::Method::POST, "/api/admin/groups", &body)
+            .await
+    }
+
+    pub async fn update_group(
+        &self,
+        id: &str,
+        name: &str,
+        description: &str,
+    ) -> Result<RemoteGroup, ClientError> {
+        let body = GroupWriteBody { name, description };
+        self.send_authorized(
+            reqwest::Method::PUT,
+            &format!("/api/admin/groups/{id}"),
+            &body,
+        )
+        .await
+    }
+
     pub async fn list_styles(&self) -> Result<Vec<RemoteStyle>, ClientError> {
         self.get_authorized("/api/admin/styles", &[]).await
     }
@@ -451,7 +493,7 @@ impl MvtRsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{bearer_token, method, path, query_param};
+    use wiremock::matchers::{bearer_token, body_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     async fn mount_login_success(server: &MockServer, token: &str) {
@@ -908,6 +950,95 @@ mod tests {
 
         assert!(result.is_ok(), "expected Ok, got {result:?}");
         assert_eq!(result.unwrap(), serde_json::json!({"deleted": true}));
+    }
+
+    #[tokio::test]
+    async fn list_groups_gets_the_admin_groups_endpoint_with_the_bearer_token() {
+        let server = MockServer::start().await;
+        mount_login_success(&server, "tok-123").await;
+        Mock::given(method("GET"))
+            .and(path("/api/admin/groups"))
+            .and(bearer_token("tok-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": "grp-1", "name": "prueba", "description": "Test group"},
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = MvtRsClient::new(server.uri(), "user@example.com", "pw");
+        let groups = client
+            .list_groups()
+            .await
+            .expect("expected the group listing to succeed");
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].id, "grp-1");
+        assert_eq!(groups[0].name, "prueba");
+        assert_eq!(groups[0].description, "Test group");
+    }
+
+    #[tokio::test]
+    async fn create_group_posts_name_and_description_to_the_admin_groups_endpoint() {
+        let server = MockServer::start().await;
+        mount_login_success(&server, "tok-123").await;
+        Mock::given(method("POST"))
+            .and(path("/api/admin/groups"))
+            .and(bearer_token("tok-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
+                {"id": "grp-1", "name": "editores", "description": "Editors"}
+            )))
+            .mount(&server)
+            .await;
+
+        let client = MvtRsClient::new(server.uri(), "user@example.com", "pw");
+        let group = client
+            .create_group("editores", "Editors")
+            .await
+            .expect("expected the group creation to succeed");
+
+        assert_eq!(group.id, "grp-1");
+        assert_eq!(group.name, "editores");
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("request recording must be enabled");
+        let create_request = requests
+            .iter()
+            .find(|r| r.url.path() == "/api/admin/groups")
+            .expect("groups POST must have been captured");
+        let json_body: serde_json::Value = create_request.body_json().expect("body must be JSON");
+        assert_eq!(
+            json_body,
+            serde_json::json!({"name": "editores", "description": "Editors"})
+        );
+    }
+
+    #[tokio::test]
+    async fn update_group_puts_name_and_description_to_the_group_id_path() {
+        let server = MockServer::start().await;
+        mount_login_success(&server, "tok-123").await;
+        Mock::given(method("PUT"))
+            .and(path("/api/admin/groups/grp-42"))
+            .and(bearer_token("tok-123"))
+            .and(body_json(
+                serde_json::json!({"name": "revisores", "description": "Reviewers"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
+                {"id": "grp-42", "name": "revisores", "description": "Reviewers"}
+            )))
+            .mount(&server)
+            .await;
+
+        let client = MvtRsClient::new(server.uri(), "user@example.com", "pw");
+        let group = client
+            .update_group("grp-42", "revisores", "Reviewers")
+            .await
+            .expect("expected the group update to succeed");
+
+        assert_eq!(group.id, "grp-42");
+        assert_eq!(group.name, "revisores");
+        assert_eq!(group.description, "Reviewers");
     }
 
     #[tokio::test]

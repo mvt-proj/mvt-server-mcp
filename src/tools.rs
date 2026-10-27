@@ -42,6 +42,19 @@ pub struct UpdateCategoryRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CreateGroupRequest {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct UpdateGroupRequest {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct UpdateStyleRequest {
     pub id: String,
     pub name: String,
@@ -226,6 +239,53 @@ fn client_error_to_tool_result(err: ClientError) -> CallToolResult {
     CallToolResult::error(vec![ContentBlock::text(message)])
 }
 
+/// Group names mvt-rs checks literally to grant admin privileges
+/// (src/auth/models.rs), unlike every other group, which layers and users
+/// reference by id.
+const ROLE_GROUP_NAMES: [&str; 2] = ["admin", "admin_metadata"];
+
+/// Approximates mvt-rs's `normalize_name` so " Ádmin " is recognized as the
+/// "admin" it will be stored as.
+fn normalize_group_name(name: &str) -> String {
+    name.trim()
+        .to_lowercase()
+        .chars()
+        .filter_map(|ch| match ch {
+            'a'..='z' | '0'..='9' | '_' => Some(ch),
+            'á' | 'à' | 'ä' | 'â' => Some('a'),
+            'é' | 'è' | 'ë' | 'ê' => Some('e'),
+            'í' | 'ì' | 'ï' | 'î' => Some('i'),
+            'ó' | 'ò' | 'ö' | 'ô' => Some('o'),
+            'ú' | 'ù' | 'ü' | 'û' => Some('u'),
+            'ñ' => Some('n'),
+            c if c.is_whitespace() => Some('_'),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Renaming a role group away from its name strips admin access from all its
+/// members (including this server's own account); renaming another group onto
+/// a role name grants it. Both are refused here, before reaching mvt-rs.
+fn role_group_rename_violation(current_name: &str, new_name: &str) -> Option<String> {
+    let current = normalize_group_name(current_name);
+    let new = normalize_group_name(new_name);
+    if current == new {
+        return None;
+    }
+    if ROLE_GROUP_NAMES.contains(&current.as_str()) {
+        return Some(format!(
+            "refusing to rename group '{current}': mvt-rs grants admin privileges by that exact name, so renaming it would revoke admin access from all its members"
+        ));
+    }
+    if ROLE_GROUP_NAMES.contains(&new.as_str()) {
+        return Some(format!(
+            "refusing to rename group '{current}' to '{new}': mvt-rs grants admin privileges by that exact name, so this would make every member an admin"
+        ));
+    }
+    None
+}
+
 // `tool_router` is written by `#[tool_router]`-generated code and read by
 // `#[tool_handler]`-generated dispatch, not by any code visible to rustc's
 // dead-code analysis in this module — it's live at runtime (proven by the
@@ -326,6 +386,56 @@ impl MvtMcpServer {
     ) -> Result<CallToolResult, McpError> {
         match self.client.delete_layer_cache(&req.id).await {
             Ok(result) => Ok(success_json(&result)),
+            Err(err) => Ok(client_error_to_tool_result(err)),
+        }
+    }
+
+    #[tool(
+        description = "List every user group known to mvt-rs (id, name, description). create_layer/update_layer's groups parameter takes group NAMES, matched exactly; mvt-rs silently drops an unknown name, and a layer left with no groups is public. Check names here first, then confirm with get_layer that the layer's groups came back non-empty."
+    )]
+    async fn list_groups(&self) -> Result<CallToolResult, McpError> {
+        match self.client.list_groups().await {
+            Ok(groups) => Ok(success_json(&groups)),
+            Err(err) => Ok(client_error_to_tool_result(err)),
+        }
+    }
+
+    #[tool(
+        description = "Create a new user group in mvt-rs. mvt-rs normalizes the name (lowercased, accents stripped, spaces to underscores, other symbols dropped), so use the name it returns when assigning the group to a layer."
+    )]
+    async fn create_group(
+        &self,
+        Parameters(req): Parameters<CreateGroupRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        match self.client.create_group(&req.name, &req.description).await {
+            Ok(group) => Ok(success_json(&group)),
+            Err(err) => Ok(client_error_to_tool_result(err)),
+        }
+    }
+
+    #[tool(
+        description = "Rename or redescribe an existing user group in mvt-rs by id. Use list_groups first to find the id. Layers reference ordinary groups by id, so renaming keeps their access. The admin and admin_metadata groups are roles mvt-rs checks by exact name: renaming them, or renaming another group to those names, is refused (their description can still change). The name is normalized the same way as in create_group."
+    )]
+    async fn update_group(
+        &self,
+        Parameters(req): Parameters<UpdateGroupRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let groups = match self.client.list_groups().await {
+            Ok(groups) => groups,
+            Err(err) => return Ok(client_error_to_tool_result(err)),
+        };
+        if let Some(current) = groups.iter().find(|g| g.id == req.id)
+            && let Some(reason) = role_group_rename_violation(&current.name, &req.name)
+        {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(reason)]));
+        }
+
+        match self
+            .client
+            .update_group(&req.id, &req.name, &req.description)
+            .await
+        {
+            Ok(group) => Ok(success_json(&group)),
             Err(err) => Ok(client_error_to_tool_result(err)),
         }
     }
@@ -539,5 +649,26 @@ mod tests {
             text.contains("Category abc not found"),
             "expected rendered message to contain the mvt-rs rejection reason verbatim, got: {text}"
         );
+    }
+
+    #[test]
+    fn renaming_a_role_group_away_from_its_name_is_blocked() {
+        assert!(role_group_rename_violation("admin", "administradores").is_some());
+        assert!(role_group_rename_violation("admin_metadata", "metadata").is_some());
+    }
+
+    #[test]
+    fn renaming_a_plain_group_to_a_role_name_is_blocked_even_before_normalization() {
+        assert!(role_group_rename_violation("prueba", "admin").is_some());
+        assert!(role_group_rename_violation("prueba", " Ádmin ").is_some());
+        assert!(role_group_rename_violation("prueba", "Admin Metadata").is_some());
+    }
+
+    #[test]
+    fn redescribing_a_role_group_or_renaming_a_plain_group_is_allowed() {
+        assert!(role_group_rename_violation("admin", "admin").is_none());
+        assert!(role_group_rename_violation("admin", "Admin").is_none());
+        assert!(role_group_rename_violation("prueba", "pruebas").is_none());
+        assert!(role_group_rename_violation("operator", "operadores").is_none());
     }
 }
