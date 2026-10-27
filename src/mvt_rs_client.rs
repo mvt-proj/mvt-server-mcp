@@ -911,6 +911,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_database_fields_puts_schema_and_table_in_path_and_database_id_in_query() {
+        let server = MockServer::start().await;
+        mount_login_success(&server, "tok-123").await;
+        Mock::given(method("GET"))
+            .and(path("/api/admin/database/fields/sc_bpa/bpa_2025"))
+            .and(query_param("database_id", "default"))
+            .and(bearer_token("tok-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"name": "id", "udt": "int4"},
+                {"name": "geom", "udt": "geometry"},
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = MvtRsClient::new(server.uri(), "user@example.com", "pw");
+        let fields = client
+            .list_database_fields("default", "sc_bpa", "bpa_2025")
+            .await
+            .expect("expected the field listing to succeed");
+
+        let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["id", "geom"]);
+        assert_eq!(fields[1].udt, "geometry");
+    }
+
+    #[tokio::test]
     async fn combines_catalog_and_per_layer_field_lookups_over_real_http() {
         let server = MockServer::start().await;
         mount_login_success(&server, "tok-123").await;

@@ -1,4 +1,4 @@
-use crate::catalog_view::{self, CategoryView, StyleView};
+use crate::catalog_view::{self, CategoryView, FieldView, StyleView};
 use crate::error::ClientError;
 use crate::mvt_rs_client::{LayerInput, MvtRsClient};
 use rmcp::{
@@ -53,6 +53,13 @@ pub struct UpdateStyleRequest {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct GetLayerRequest {
     pub id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ListTableFieldsRequest {
+    pub database_id: String,
+    pub schema: String,
+    pub table: String,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -287,6 +294,25 @@ impl MvtMcpServer {
         let input: LayerInput = req.into();
         match self.client.update_layer(&id, &input).await {
             Ok(layer) => Ok(success_json(&layer)),
+            Err(err) => Ok(client_error_to_tool_result(err)),
+        }
+    }
+
+    #[tool(
+        description = "List every column (name and Postgres type) of a database table reachable from mvt-rs, whether or not it is already a catalog layer. Use it before create_layer to pick the table's real field names; leave the geometry column out of create_layer's fields, since it goes in geom. database_id is the mvt-rs database id (get_layer shows the one existing layers use)."
+    )]
+    async fn list_table_fields(
+        &self,
+        Parameters(req): Parameters<ListTableFieldsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        match self
+            .client
+            .list_database_fields(&req.database_id, &req.schema, &req.table)
+            .await
+        {
+            Ok(fields) => Ok(success_json(
+                &fields.into_iter().map(FieldView::from).collect::<Vec<_>>(),
+            )),
             Err(err) => Ok(client_error_to_tool_result(err)),
         }
     }

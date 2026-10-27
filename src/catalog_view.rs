@@ -6,6 +6,15 @@ pub struct FieldView {
     pub r#type: String,
 }
 
+impl From<RemoteField> for FieldView {
+    fn from(f: RemoteField) -> Self {
+        FieldView {
+            name: f.name,
+            r#type: f.udt,
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LayerView {
     pub id: String,
@@ -365,6 +374,24 @@ mod tests {
         let result = build_style_detail_view(remote);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn field_view_from_remote_field_exposes_udt_as_type() {
+        let remote = RemoteField {
+            name: "superficie".into(),
+            udt: "float8".into(),
+        };
+
+        let view: FieldView = remote.into();
+
+        assert_eq!(
+            view,
+            FieldView {
+                name: "superficie".into(),
+                r#type: "float8".into(),
+            }
+        );
     }
 
     #[test]
