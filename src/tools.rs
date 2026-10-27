@@ -69,6 +69,17 @@ pub struct GetLayerRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ListSchemasRequest {
+    pub database_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ListTablesRequest {
+    pub database_id: String,
+    pub schema: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ListTableFieldsRequest {
     pub database_id: String,
     pub schema: String,
@@ -354,6 +365,36 @@ impl MvtMcpServer {
         let input: LayerInput = req.into();
         match self.client.update_layer(&id, &input).await {
             Ok(layer) => Ok(success_json(&layer)),
+            Err(err) => Ok(client_error_to_tool_result(err)),
+        }
+    }
+
+    #[tool(
+        description = "List every schema in a database reachable from mvt-rs. database_id is the mvt-rs database id (get_layer shows the one existing layers use). Use this before list_tables to find the schema to look in."
+    )]
+    async fn list_schemas(
+        &self,
+        Parameters(req): Parameters<ListSchemasRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        match self.client.list_database_schemas(&req.database_id).await {
+            Ok(schemas) => Ok(success_json(&schemas)),
+            Err(err) => Ok(client_error_to_tool_result(err)),
+        }
+    }
+
+    #[tool(
+        description = "List every table, view, and materialized view in a database schema reachable from mvt-rs, with the name of its geometry column. Only relations with a registered geometry column are returned (mvt-rs's own requirement for create_layer); the three kinds come back combined, with nothing distinguishing which is which. Use list_schemas first to find the schema."
+    )]
+    async fn list_tables(
+        &self,
+        Parameters(req): Parameters<ListTablesRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        match self
+            .client
+            .list_database_tables(&req.database_id, &req.schema)
+            .await
+        {
+            Ok(tables) => Ok(success_json(&tables)),
             Err(err) => Ok(client_error_to_tool_result(err)),
         }
     }

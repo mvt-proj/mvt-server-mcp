@@ -106,7 +106,7 @@ As with Claude Code, you can instead pass the three `MVT_SERVER_MCP__MVT_RS__*` 
 
 ## Tools
 
-The server exposes sixteen tools:
+The server exposes eighteen tools:
 
 - **`list_layers`**: List every layer in the MVT Server catalog, with its id, name, category, geometry type, published state, and the name+type of every field it exposes.
 
@@ -115,6 +115,10 @@ The server exposes sixteen tools:
 - **`create_layer`**: Register a new layer in the MVT Server catalog from an existing Postgres table. The database/schema/table must already exist and be reachable from MVT Server; this only creates the catalog entry.
 
 - **`update_layer`**: Replace an existing layer's full catalog entry in MVT Server by id — e.g. to move it to a different category, rename it, or change its published state. This replaces the whole entry, not a partial patch: call `get_layer` first and pass every field back with its current value except what you mean to change.
+
+- **`list_schemas`**: List every schema in a database reachable from MVT Server. Use this before `list_tables` to find the schema to look in.
+
+- **`list_tables`**: List every table, view, and materialized view in a database schema reachable from MVT Server, with the name of its geometry column. Only relations with a registered geometry column are returned; the three kinds come back combined, with nothing distinguishing which is which. Use `list_schemas` first to find the schema.
 
 - **`list_table_fields`**: List every column (name and Postgres type) of a database table reachable from MVT Server, whether or not it is already a catalog layer. Use it before `create_layer` to pick the table's real field names; leave the geometry column out of `create_layer`'s fields, since it goes in `geom`.
 

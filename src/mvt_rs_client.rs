@@ -37,6 +37,21 @@ pub struct RemoteField {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteSchema {
+    pub name: String,
+}
+
+/// A table, view, or materialized view with a registered geometry column —
+/// mvt-rs's `tables` endpoint joins against `geometry_columns` and filters
+/// `relkind IN ('r', 'p', 'v', 'm')`, so the three kinds come back combined
+/// with no field distinguishing which is which.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteDbTable {
+    pub name: String,
+    pub geometry: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteGroup {
     pub id: String,
     pub name: String,
@@ -387,6 +402,26 @@ impl MvtRsClient {
             &(),
         )
         .await
+    }
+
+    pub async fn list_database_schemas(
+        &self,
+        database_id: &str,
+    ) -> Result<Vec<RemoteSchema>, ClientError> {
+        self.get_authorized("/api/admin/database/schemas", &[("database_id", database_id)])
+            .await
+    }
+
+    /// `schema` is a URL path segment (mvt-rs mounts this route as
+    /// `tables/{schema}`) — only `database_id` is a query param.
+    pub async fn list_database_tables(
+        &self,
+        database_id: &str,
+        schema: &str,
+    ) -> Result<Vec<RemoteDbTable>, ClientError> {
+        let path = format!("/api/admin/database/tables/{schema}");
+        self.get_authorized(&path, &[("database_id", database_id)])
+            .await
     }
 
     /// `schema`/`table` are URL path segments (mvt-rs mounts this route as
@@ -1065,6 +1100,57 @@ mod tests {
         let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["id", "geom"]);
         assert_eq!(fields[1].udt, "geometry");
+    }
+
+    #[tokio::test]
+    async fn list_database_schemas_sends_database_id_as_query_param() {
+        let server = MockServer::start().await;
+        mount_login_success(&server, "tok-123").await;
+        Mock::given(method("GET"))
+            .and(path("/api/admin/database/schemas"))
+            .and(query_param("database_id", "default"))
+            .and(bearer_token("tok-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"name": "public"},
+                {"name": "sc_bpa"},
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = MvtRsClient::new(server.uri(), "user@example.com", "pw");
+        let schemas = client
+            .list_database_schemas("default")
+            .await
+            .expect("expected the schema listing to succeed");
+
+        let names: Vec<_> = schemas.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["public", "sc_bpa"]);
+    }
+
+    #[tokio::test]
+    async fn list_database_tables_puts_schema_in_path_and_database_id_in_query() {
+        let server = MockServer::start().await;
+        mount_login_success(&server, "tok-123").await;
+        Mock::given(method("GET"))
+            .and(path("/api/admin/database/tables/sc_bpa"))
+            .and(query_param("database_id", "default"))
+            .and(bearer_token("tok-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"name": "bpa_2025", "geometry": "geom"},
+                {"name": "vw_bpa_resumen", "geometry": "geom"},
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = MvtRsClient::new(server.uri(), "user@example.com", "pw");
+        let tables = client
+            .list_database_tables("default", "sc_bpa")
+            .await
+            .expect("expected the table listing to succeed");
+
+        let names: Vec<_> = tables.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["bpa_2025", "vw_bpa_resumen"]);
+        assert_eq!(tables[0].geometry, "geom");
     }
 
     #[tokio::test]
