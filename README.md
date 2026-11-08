@@ -2,7 +2,7 @@
 
 An MCP server that bridges AI assistants — Claude, Antigravity, or any other MCP-compatible client — to [MVT Server](https://github.com/mvt-proj/mvt-rs) (repo name `mvt-rs`), a PostgreSQL-backed vector tile and style management system. This server discovers catalog layers and style categories, and allows the connected AI assistant to create or update MapLibre styles on the connected MVT Server instance. Non-goals: this server makes no AI calls itself, performs no semantic style validation, and communicates via stdio only.
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/mvt-proj-mvt-server-mcp-1s2v5d?v=3de508fde474e8895112f81cb998a2fd)](https://m8ven.ai/mcp/mvt-proj-mvt-server-mcp-1s2v5d?s=readme)
+[![M8ven Verified](https://m8ven.ai/badge/mcp/mvt-proj-mvt-server-mcp-1s2v5d?v=3de508fde474e8895112f81cb998a2fd&variant=verified)](https://m8ven.ai/mcp/mvt-proj-mvt-server-mcp-1s2v5d?s=readme)
 
 ## Build
 
